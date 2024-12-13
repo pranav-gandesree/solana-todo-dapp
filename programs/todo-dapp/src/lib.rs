@@ -32,11 +32,9 @@ pub mod todo_dapp {
         ctx: Context<AddTodo>,
         _content: String
     ) -> Result<()>{
-        //initialize variables
         let todo_account = &mut ctx.accounts.todo_account;
         let user_profile = &mut ctx.accounts.user_profile;
         
-        //fill the todo account with proper values
         todo_account.authority = ctx.accounts.authority.key();
         todo_account.idx = user_profile.last_todo_count;
         todo_account.content = _content;
@@ -55,8 +53,26 @@ pub mod todo_dapp {
     }
 
     //mark todo
+    pub fn mark_todo(ctx: Context<MarkTodo>, _todo_idx: u8) -> Result<()> {
+        let todo_account = &mut ctx.accounts.todo_account;
+        require!(!todo_account.marked, TodoError::AlreadyMarked);
+
+        todo_account.marked = true;
+        Ok(())
+    }
 
     //remove todo
+    pub fn remove_todo(ctx: Context<RemoveTodo>, _todo_idx: u8) -> Result<()> {
+       
+        let user_profile = &mut ctx.accounts.user_profile;
+        user_profile.todo_count = user_profile.todo_count
+            .checked_sub(1)
+            .unwrap();
+
+        // no need to decrease last todo idx
+
+        Ok(())
+    }
 }
 
 
@@ -106,4 +122,74 @@ pub struct AddTodo<'info> {
     pub authority: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(todo_idx: u8)]
+pub struct MarkTodo<'info> {
+    #[account(
+        mut,
+        seeds = [USER_TAG, authority.key().as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub user_profile: Box<Account<'info, UserProfile>>,
+
+    #[account(
+        mut,
+        seeds = [TODO_TAG, authority.key().as_ref(), &[todo_idx].as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub todo_account: Box<Account<'info, TodoAccount>>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+
+#[derive(Accounts)]
+#[instruction(todo_idx: u8)]
+pub struct RemoveTodo<'info> {
+    #[account(
+        mut,
+        seeds = [USER_TAG, authority.key().as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub user_profile: Box<Account<'info, UserProfile>>,
+
+    #[account(
+        mut,
+        close = authority,
+        seeds = [TODO_TAG, authority.key().as_ref(), &[todo_idx].as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub todo_account: Box<Account<'info, TodoAccount>>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+
+pub fn is_zero_account(account_info: &AccountInfo) -> bool {
+    let account_data: &[u8] = &account_info.data.borrow();
+    let len = account_data.len();
+    let mut is_zero = true;
+    for i in 0..len - 1 {
+        if account_data[i] != 0 {
+            is_zero = false;
+        }
+    }
+    is_zero
+}
+
+pub fn bump(seeds: &[&[u8]], program_id: &Pubkey) -> u8 {
+    let (_found_key, bump) = Pubkey::find_program_address(seeds, program_id);
+    bump
 }
